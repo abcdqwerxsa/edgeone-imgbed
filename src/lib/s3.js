@@ -1,10 +1,20 @@
-import { AwsClient } from 'aws4fetch';
+import { signV4 } from './sigv4.js';
 
 /**
- * 规范化 endpoint：去掉协议前缀，返回纯 host（如 s3.bitiful.net）。
+ * Bitiful S3 操作。签名用自实现 SigV4（见 sigv4.js），不依赖 aws4fetch。
  */
+
 function endpointHost(env) {
   return (env.BITIFUL_ENDPOINT || 's3.bitiful.net').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
+
+function creds(env) {
+  return {
+    accessKeyId: env.BITIFUL_ACCESS_KEY,
+    secretAccessKey: env.BITIFUL_SECRET_KEY,
+    region: env.BITIFUL_REGION || 'cn-east-1',
+    service: 's3',
+  };
 }
 
 /** 对象 URL（path-style）：https://s3.bitiful.net/<bucket>/<key> */
@@ -12,49 +22,23 @@ export function objectUrl(env, key) {
   return `https://${endpointHost(env)}/${env.BITIFUL_BUCKET}/${encodeURI(key)}`;
 }
 
-/** ListObjectsV2 URL：https://s3.bitiful.net/<bucket>?list-type=2&prefix=... */
-function listUrl(env, prefix) {
-  const qs = new URLSearchParams();
-  qs.set('list-type', '2');
-  if (prefix) qs.set('prefix', prefix);
-  return `https://${endpointHost(env)}/${env.BITIFUL_BUCKET}?${qs.toString()}`;
-}
-
-/** 创建 aws4fetch 客户端（每次请求新建，凭证来自 env）。 */
-export function createClient(env) {
-  return new AwsClient({
-    accessKeyId: env.BITIFUL_ACCESS_KEY,
-    secretAccessKey: env.BITIFUL_SECRET_KEY,
-    service: 's3',
-    region: env.BITIFUL_REGION || 'cn-east-1',
-    retries: 3,
-  });
-}
-
-/**
- * 签发 presigned PUT URL（浏览器直传）。
- * 仅签名 host（不把 Content-Type 放进 SignedHeaders），
- * 这样客户端 PUT 时可自由携带 Content-Type，不会造成签名不匹配。
- */
+/** 签发 presigned PUT URL（浏览器直传）。 */
 export async function signPresignedPut(env, key, expires = 3600) {
-  const aws = createClient(env);
-  const url = `${objectUrl(env, key)}?X-Amz-Expires=${expires}`;
-  const signed = await aws.sign(new Request(url, { method: 'PUT' }), {
-    aws: { signQuery: true },
-  });
+  const signed = await signV4({ method: 'PUT', url: objectUrl(env, key), expires, ...creds(env) });
   return signed.url;
 }
 
 /** 签名 GET 并拉取对象（下载代理用）。 */
 export async function fetchObject(env, key) {
-  const aws = createClient(env);
-  return aws.fetch(objectUrl(env, key), { method: 'GET' });
+  const signed = await signV4({ method: 'GET', url: objectUrl(env, key), ...creds(env) });
+  return fetch(signed.url, { method: 'GET', headers: signed.headers });
 }
 
 /** 列出对象（ListObjectsV2）。返回 [{ key, size, lastModified }]。 */
 export async function listObjects(env, prefix = 'img/') {
-  const aws = createClient(env);
-  const res = await aws.fetch(listUrl(env, prefix), { method: 'GET' });
+  const url = `https://${endpointHost(env)}/${env.BITIFUL_BUCKET}?list-type=2&prefix=${encodeURIComponent(prefix)}`;
+  const signed = await signV4({ method: 'GET', url, ...creds(env) });
+  const res = await fetch(signed.url, { method: 'GET', headers: signed.headers });
   if (!res.ok) {
     throw new Error(`list failed: ${res.status} ${await res.text().catch(() => '')}`);
   }
@@ -63,8 +47,8 @@ export async function listObjects(env, prefix = 'img/') {
 
 /** 删除对象。 */
 export async function deleteObject(env, key) {
-  const aws = createClient(env);
-  return aws.fetch(objectUrl(env, key), { method: 'DELETE' });
+  const signed = await signV4({ method: 'DELETE', url: objectUrl(env, key), ...creds(env) });
+  return fetch(signed.url, { method: 'DELETE', headers: signed.headers });
 }
 
 /** 轻量解析 ListObjectsV2 XML（边缘运行时无 DOMParser，用正则）。 */
