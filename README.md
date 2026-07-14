@@ -8,7 +8,7 @@
 ```
 上传（绕过边缘函数 1MB 请求体限制）：
   浏览器 --POST /api/upload (Token)--> 边缘函数
-  边缘函数(aws4fetch 签名) --> 返回 presigned PUT URL
+  边缘函数(自实现 SigV4 签名) --> 返回 presigned PUT URL
   浏览器 --PUT 文件(直传)--> s3.bitiful.net   ← 需配 Bitiful CORS
 
 下载（私有桶永久外链）：
@@ -26,12 +26,12 @@
 ```
 edgeone-imgbed/
 ├── edgeone.json               # Makers 配置（outputDirectory=./public）
-├── package.json               # 依赖 aws4fetch
+├── package.json               # 无外部依赖（签名自实现）
 ├── .env / .env.example        # 环境变量（.env 已 gitignore）
 ├── edge-functions/
 │   ├── api/{upload,list,delete}.js
 │   └── i/[[key]].js           # 下载代理（永久外链）
-├── src/lib/{s3,auth,utils}.js # 共享：aws4fetch 客户端 / token 鉴权 / 工具
+├── src/lib/{sigv4,s3,auth,utils}.js # 共享：自实现 SigV4 / S3 操作 / token 鉴权 / 工具
 └── public/{index.html,app.js,style.css}  # 上传网页 UI
 ```
 
@@ -165,5 +165,5 @@ curl -X PUT "$UPLOAD_URL" -H "Content-Type: image/jpeg" --data-binary @cat.jpg
 - EdgeOne Makers Edge Functions：https://pages.edgeone.ai/document/edge-functions
 - edgeone.json 配置：https://pages.edgeone.ai/document/edgeone-json
 - 边缘函数限制（1MB/200ms）：https://cloud.tencent.com/document/product/1552/81344
-- aws4fetch：https://github.com/mhart/aws4fetch
+- AWS SigV4 签名规范（本项目自实现于 `src/lib/sigv4.js`，因 EdgeOne 运行时 `URL.searchParams` 不可迭代，无法直接用 aws4fetch）：https://github.com/mhart/aws4fetch
 - Bitiful：https://www.bitiful.com/ ｜ 文档 https://docs.bitiful.com/
