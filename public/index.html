@@ -3,76 +3,111 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EdgeOne 图床</title>
+  <title>imgbed — 图床</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">🖼️ EdgeOne 图床</div>
-    <div class="actions">
-      <span id="token-state" class="badge badge-warn" title="点击设置上传 Token">未设置 Token</span>
-      <button id="btn-token" class="btn btn-ghost">设置 Token</button>
-      <button id="btn-gallery" class="btn btn-ghost">图库</button>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="/">imgbed<span class="brand-dot">.</span></a>
+      <nav class="nav" role="tablist" aria-label="视图切换">
+        <button class="nav-tab is-active" data-view="upload" role="tab">上传</button>
+        <button class="nav-tab" data-view="gallery" role="tab">图库</button>
+      </nav>
+      <div class="header-right">
+        <button id="tokenBtn" class="chip" title="设置上传 Token" aria-label="设置上传 Token">
+          <span id="tokenDot" class="dot dot-off" aria-hidden="true"></span>
+          <span id="tokenLabel">未设置 Token</span>
+        </button>
+      </div>
     </div>
   </header>
 
-  <main class="container">
-    <section id="upload-section">
-      <div id="dropzone" class="dropzone">
-        <div class="dz-inner">
-          <div class="dz-icon">⬆️</div>
-          <p class="dz-title">拖拽图片到此处上传</p>
-          <p class="dz-sub">或点击选择文件 · 支持多选 · 直传 Bitiful</p>
-          <input id="file-input" type="file" accept="image/*" multiple hidden />
-        </div>
+  <main class="wrap">
+    <!-- 上传视图 -->
+    <section id="view-upload" class="view" role="tabpanel">
+      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="上传图片">
+        <input id="fileInput" type="file" accept="image/*" multiple hidden />
+        <svg class="dz-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 16V4m0 0L7 9m5-5l5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 14v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p class="dz-title">拖入图片、粘贴或点击上传</p>
+        <p class="dz-sub">支持多选 · 直传对象存储 · 生成永久外链</p>
+        <span class="dz-hint" id="pasteHint">支持 Ctrl/⌘ + V 粘贴</span>
       </div>
 
-      <div id="results" class="results"></div>
+      <div id="results" class="results" aria-live="polite"></div>
     </section>
 
-    <section id="gallery-section" hidden>
-      <div class="section-head">
-        <h2>图库</h2>
-        <button id="btn-refresh" class="btn btn-ghost">刷新</button>
+    <!-- 图库视图 -->
+    <section id="view-gallery" class="view" role="tabpanel" hidden>
+      <div class="gallery-head">
+        <h2 class="section-title">图库</h2>
+        <button id="refreshBtn" class="btn btn-ghost">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6L4 16M4 20v-4h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          刷新
+        </button>
       </div>
       <div id="gallery" class="gallery"></div>
     </section>
   </main>
 
-  <!-- 单张结果的模板 -->
+  <footer class="site-foot">
+    <div class="wrap foot-inner">
+      <span class="muted">私有桶 · 边缘代理直链 · Token 鉴权上传</span>
+    </div>
+  </footer>
+
+  <!-- 上传结果卡片模板 -->
   <template id="tpl-result">
-    <div class="result-card">
-      <div class="rc-preview"><img alt="" /></div>
+    <article class="result-card">
+      <div class="rc-thumb"><img alt="" loading="lazy" /></div>
       <div class="rc-body">
-        <div class="rc-name"></div>
-        <div class="rc-links">
-          <label>外链直链</label>
-          <div class="copy-row"><input class="link-url" readonly /><button class="btn-copy">复制</button></div>
-          <label>Markdown</label>
-          <div class="copy-row"><input class="link-md" readonly /><button class="btn-copy">复制</button></div>
-          <label>HTML</label>
-          <div class="copy-row"><input class="link-html" readonly /><button class="btn-copy">复制</button></div>
-          <a class="rc-open" target="_blank" rel="noopener">在新标签打开 ↗</a>
+        <div class="rc-head">
+          <span class="rc-name"></span>
+          <span class="rc-meta"></span>
+        </div>
+        <div class="rc-links"></div>
+        <div class="rc-foot">
+          <a class="rc-open" target="_blank" rel="noopener">在新标签打开</a>
         </div>
       </div>
-    </div>
+    </article>
   </template>
 
   <!-- 图库单项模板 -->
   <template id="tpl-gallery-item">
-    <div class="g-item">
-      <img alt="" loading="lazy" />
-      <div class="g-meta">
-        <span class="g-name"></span>
-        <div class="g-tools">
-          <button class="btn-copy" data-target="url">复制链接</button>
-          <button class="btn-del">删除</button>
+    <article class="g-item">
+      <div class="g-media">
+        <img alt="" loading="lazy" />
+        <div class="g-overlay">
+          <button class="iconbtn" data-act="copy" title="复制链接" aria-label="复制链接">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+          <button class="iconbtn g-del" data-act="delete" title="删除" aria-label="删除">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-9 0 1 13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
       </div>
-    </div>
+      <div class="g-name" title=""></div>
+    </article>
   </template>
 
-  <div id="toast" class="toast" hidden></div>
+  <!-- Token 设置弹窗 -->
+  <dialog id="tokenDialog" class="modal">
+    <form method="dialog" class="modal-form">
+      <h3 class="modal-title">设置上传 Token</h3>
+      <p class="modal-desc">Token 等同于上传密码，仅保存在本地浏览器。对应环境变量 <code>UPLOAD_TOKEN</code>。</p>
+      <input id="tokenInput" class="input" type="password" autocomplete="off" placeholder="粘贴你的 UPLOAD_TOKEN" />
+      <div class="modal-actions">
+        <button id="tokenCancel" class="btn btn-ghost" value="cancel">取消</button>
+        <button id="tokenSave" class="btn btn-primary" value="save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="/app.js"></script>
 </body>
