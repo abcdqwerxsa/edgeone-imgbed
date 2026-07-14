@@ -331,11 +331,14 @@ async function getRemover(onProgress) {
   if (ai.remover) return ai.remover;
   const tr = await import(TF_CDN);
   tr.env.allowLocalModels = false;
+  // 模型经本站 /hf 代理加载（Cloudflare 边缘可访问 HF 并缓存），绕开对 huggingface.co 的直连
+  tr.env.remoteHost = location.origin + '/hf';
   // 优先 WebGPU（快），失败回退默认 WASM
+  // 模型用 Xenova/modnet：transformers.js 原生兼容、公开可下、对人像抠图友好（适合证件照）
   try {
-    ai.remover = await tr.pipeline('background-removal', 'onnx-community/RMBG-1.4', { device: 'webgpu', progress_callback: onProgress });
+    ai.remover = await tr.pipeline('background-removal', 'Xenova/modnet', { device: 'webgpu', progress_callback: onProgress });
   } catch {
-    ai.remover = await tr.pipeline('background-removal', 'onnx-community/RMBG-1.4', { progress_callback: onProgress });
+    ai.remover = await tr.pipeline('background-removal', 'Xenova/modnet', { progress_callback: onProgress });
   }
   return ai.remover;
 }
