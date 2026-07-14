@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>imgbed — 图床</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -36,6 +38,56 @@
         <p class="dz-sub">支持多选 · 直传对象存储 · 生成永久外链</p>
         <span class="dz-hint" id="pasteHint">支持 Ctrl/⌘ + V 粘贴</span>
       </div>
+
+      <!-- 图片处理面板（上传前在浏览器本地用 Canvas 处理）-->
+      <details class="proc" id="procPanel">
+        <summary class="proc-head">
+          <svg class="proc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="proc-title">图片处理</span>
+          <span class="proc-sub">水印 · 压缩 · 缩放 · 格式（上传前本地处理，可叠加）</span>
+        </summary>
+        <div class="proc-body">
+
+          <div class="proc-row" data-feat="resize">
+            <label class="switch"><input type="checkbox" id="rsOn"><span></span></label>
+            <div class="proc-main">
+              <div class="proc-label">调整尺寸</div>
+              <div class="proc-ctrl">最大宽度 <input type="number" class="num" id="rsWidth" value="1920" min="32" max="20000"> px<span class="proc-note">超过则等比缩小</span></div>
+            </div>
+          </div>
+
+          <div class="proc-row" data-feat="compress">
+            <label class="switch"><input type="checkbox" id="cpOn"><span></span></label>
+            <div class="proc-main">
+              <div class="proc-label">压缩质量</div>
+              <div class="proc-ctrl">质量 <input type="range" class="rng" id="cpQ" min="10" max="100" value="80"><output class="num-out" id="cpQOut">80</output></div>
+            </div>
+          </div>
+
+          <div class="proc-row" data-feat="format">
+            <label class="switch"><input type="checkbox" id="fmOn"><span></span></label>
+            <div class="proc-main">
+              <div class="proc-label">转换格式</div>
+              <div class="proc-ctrl">输出 <select class="sel" id="fmType"><option value="image/webp">WebP（更小）</option><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option></select></div>
+            </div>
+          </div>
+
+          <div class="proc-row" data-feat="watermark">
+            <label class="switch"><input type="checkbox" id="wmOn"><span></span></label>
+            <div class="proc-main">
+              <div class="proc-label">添加水印</div>
+              <div class="proc-ctrl wm-ctrl">
+                <input type="text" class="wm-text" id="wmText" placeholder="水印文字" value="© imgbed">
+                位置 <select class="sel" id="wmPos"><option value="br">右下</option><option value="bl">左下</option><option value="tr">右上</option><option value="tl">左上</option><option value="c">居中</option></select>
+                字号 <input type="number" class="num wm-size" id="wmSize" value="28" min="8" max="200">
+                透明度 <input type="range" class="rng" id="wmOpacity" min="10" max="100" value="45"><output class="num-out" id="wmOpacityOut">45</output>
+                颜色 <input type="color" class="wm-color" id="wmColor" value="#ffffff">
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </details>
 
       <div id="results" class="results" aria-live="polite"></div>
     </section>

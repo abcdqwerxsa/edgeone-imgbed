@@ -87,6 +87,83 @@ function switchView(name) {
   if (name === 'gallery') loadGallery();
 }
 
+/* ---------------- 图片处理（上传前，浏览器本地 Canvas）---------------- */
+const numVal = (sel, d) => {
+  const v = Number($(sel).value);
+  return Number.isFinite(v) && v > 0 ? v : d;
+};
+
+function getSettings() {
+  return {
+    resize: { on: $('#rsOn').checked, width: numVal('#rsWidth', 1920) },
+    compress: { on: $('#cpOn').checked, quality: numVal('#cpQ', 80) },
+    format: { on: $('#fmOn').checked, type: $('#fmType').value },
+    watermark: {
+      on: $('#wmOn').checked,
+      text: $('#wmText').value.trim(),
+      pos: $('#wmPos').value,
+      size: numVal('#wmSize', 28),
+      opacity: numVal('#wmOpacity', 45),
+      color: $('#wmColor').value,
+    },
+  };
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片加载失败，跳过处理')); };
+    img.src = url;
+  });
+}
+
+// 在浏览器本地处理：缩放 →（铺白底，若输出 JPEG）→ 绘制 → 水印 → 导出
+async function processImage(file, s) {
+  if (!/^image\/(png|jpeg|webp|bmp)$/i.test(file.type)) return file; // GIF/SVG 原样上传
+  const img = await loadImage(file);
+  let w = img.naturalWidth, h = img.naturalHeight;
+  if (s.resize.on && w > s.resize.width) {
+    const r = s.resize.width / w;
+    w = Math.round(w * r); h = Math.round(h * r);
+  }
+  const outType = s.format.on ? s.format.type : file.type;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (outType === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); } // JPEG 无透明通道
+  ctx.drawImage(img, 0, 0, w, h);
+  if (s.watermark.on && s.watermark.text) drawWatermark(ctx, w, h, s.watermark);
+  const quality = s.compress.on ? s.compress.quality / 100 : 0.92;
+  const blob = await new Promise((res, rej) =>
+    canvas.toBlob((b) => (b ? res(b) : rej(new Error('导出失败'))), outType, quality)
+  );
+  const ext = outType === 'image/webp' ? 'webp' : outType === 'image/png' ? 'png' : 'jpg';
+  const baseName = file.name.replace(/\.[^.]+$/, '');
+  return new File([blob], `${baseName}.${ext}`, { type: outType });
+}
+
+function drawWatermark(ctx, w, h, wm) {
+  const fs = Math.max(8, wm.size);
+  const map = { br: ['b', 'r'], bl: ['b', 'l'], tr: ['t', 'r'], tl: ['t', 'l'], c: ['m', 'c'] };
+  const [vy, vx] = map[wm.pos] || ['b', 'r'];
+  ctx.save();
+  ctx.font = `600 ${fs}px -apple-system, "SF Pro Display", system-ui, "PingFang SC", sans-serif`;
+  ctx.globalAlpha = Math.min(1, Math.max(0.05, wm.opacity / 100));
+  ctx.fillStyle = wm.color;
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = fs * 0.16;
+  ctx.shadowOffsetY = fs * 0.05;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = vx === 'l' ? 'left' : vx === 'r' ? 'right' : 'center';
+  const pad = Math.max(12, fs * 0.5);
+  const x = vx === 'l' ? pad : vx === 'r' ? w - pad : w / 2;
+  const y = vy === 't' ? pad + fs / 2 : vy === 'b' ? h - pad - fs / 2 : h / 2;
+  ctx.fillText(wm.text, x, y);
+  ctx.restore();
+}
+
 /* ---------------- 上传 ---------------- */
 async function uploadFile(file) {
   const signRes = await fetch('/api/upload', {
@@ -112,11 +189,12 @@ async function uploadFile(file) {
   return { viewUrl, name: file.name, size: file.size };
 }
 
-function addResultCard({ viewUrl, name, size }) {
+function addResultCard({ viewUrl, name, size }, origSize = null) {
   const node = $('#tpl-result').content.firstElementChild.cloneNode(true);
   node.querySelector('img').src = viewUrl;
   node.querySelector('.rc-name').textContent = name;
-  node.querySelector('.rc-meta').textContent = fmtSize(size);
+  node.querySelector('.rc-meta').textContent =
+    origSize !== null && origSize !== size ? `${fmtSize(size)} · 处理自 ${fmtSize(origSize)}` : fmtSize(size);
   node.querySelector('.rc-open').href = viewUrl;
 
   const md = `![${name}](${viewUrl})`;
@@ -143,9 +221,17 @@ async function handleFiles(files) {
   const imgs = [...files].filter((f) => f.type.startsWith('image/'));
   if (!imgs.length) { toast('请选择图片文件', true); return; }
   if (!ensureToken()) return;
+  const s = getSettings();
+  const anyProc = s.resize.on || s.compress.on || s.format.on || s.watermark.on;
   for (const file of imgs) {
     try {
-      addResultCard(await uploadFile(file));
+      let out = file, origSize = null;
+      if (anyProc) {
+        origSize = file.size;
+        out = await processImage(file, s);
+        if (out === file) origSize = null; // 该格式不支持处理（GIF/SVG），不显示对比
+      }
+      addResultCard(await uploadFile(out), origSize);
       toast('上传成功');
     } catch (e) {
       toast(e.message, true);
@@ -241,6 +327,14 @@ function init() {
   el.tabs.forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
   el.tokenBtn.addEventListener('click', openTokenDialog);
   el.refreshBtn.addEventListener('click', loadGallery);
+
+  // 图片处理面板：滑块联动数值显示
+  [['#cpQ', '#cpQOut'], ['#wmOpacity', '#wmOpacityOut']].forEach(([r, o]) => {
+    const rng = $(r), out = $(o);
+    const sync = () => (out.textContent = rng.value);
+    rng.addEventListener('input', sync);
+    sync();
+  });
 
   // Token 弹窗：点遮罩关闭，保存写入
   el.tokenDialog.addEventListener('click', (e) => {
