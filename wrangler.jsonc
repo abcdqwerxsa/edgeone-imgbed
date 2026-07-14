@@ -3,5 +3,8 @@
   // （Pages Functions 的 onRequestPost / context.env API 与 EdgeOne 一致，函数代码无需改动）
   "name": "imgbed",
   "pages_build_output_dir": "./public",
-  "compatibility_date": "2025-07-01"
+  "compatibility_date": "2025-07-01",
+  // Workers AI 绑定：functions 里用 context.env.AI 调 Flux 生图（AI 场景背景）
+  "ai_binding": "AI"
 }
+

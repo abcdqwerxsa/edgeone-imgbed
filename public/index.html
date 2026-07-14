@@ -15,6 +15,7 @@
       <nav class="nav" role="tablist" aria-label="视图切换">
         <button class="nav-tab is-active" data-view="upload" role="tab">上传</button>
         <button class="nav-tab" data-view="gallery" role="tab">图库</button>
+        <button class="nav-tab" data-view="ai" role="tab">AI 抠图</button>
       </nav>
       <div class="header-right">
         <button id="tokenBtn" class="chip" title="设置上传 Token" aria-label="设置上传 Token">
@@ -102,6 +103,82 @@
         </button>
       </div>
       <div id="gallery" class="gallery"></div>
+    </section>
+
+    <!-- AI 抠图视图 -->
+    <section id="view-ai" class="view" role="tabpanel" hidden>
+      <div class="ai-layout">
+        <!-- 左：控制面板 -->
+        <div class="ai-panel">
+          <div id="aiDrop" class="ai-drop" tabindex="0" role="button" aria-label="选择图片抠图">
+            <input id="aiFile" type="file" accept="image/*" hidden>
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 16l4.5-4.5a2 2 0 0 1 2.8 0L16 16m-2-2l1.5-1.5a2 2 0 0 1 2.8 0L20 15M14 7.5A1.5 1.5 0 1 1 11.5 6M5 20h14a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <p class="ai-drop-title">点击或拖入一张图</p>
+            <p class="ai-drop-sub">人像/商品效果最佳 · 本地浏览器抠图</p>
+          </div>
+
+          <div id="aiProgress" class="ai-progress" hidden>
+            <div class="ai-bar"><span id="aiBarFill"></span></div>
+            <span id="aiProgressText" class="small muted">加载模型…</span>
+          </div>
+
+          <div id="aiOpts" class="ai-opts" hidden>
+            <div class="ai-field">
+              <span class="ai-label">背景</span>
+              <div class="seg" id="bgType">
+                <button type="button" class="seg-btn is-active" data-v="transparent">透明</button>
+                <button type="button" class="seg-btn" data-v="solid">纯色</button>
+                <button type="button" class="seg-btn" data-v="scene">AI 场景</button>
+              </div>
+            </div>
+
+            <div class="ai-field" data-show="solid" hidden>
+              <span class="ai-label">颜色</span>
+              <div class="ai-swatches" id="aiColors">
+                <button type="button" class="swatch" data-c="#ffffff" style="--c:#ffffff" title="白"></button>
+                <button type="button" class="swatch is-active" data-c="#438edb" style="--c:#438edb" title="蓝（证件照）"></button>
+                <button type="button" class="swatch" data-c="#d9001b" style="--c:#d9001b" title="红"></button>
+                <label class="swatch swatch-picker" title="自定义"><input type="color" id="aiColor" value="#438edb"></label>
+              </div>
+            </div>
+
+            <div class="ai-field" data-show="scene" hidden>
+              <span class="ai-label">AI 场景背景</span>
+              <input type="text" class="ai-prompt input" id="aiPrompt" placeholder="描述背景，如：海边日落 / 纯色影棚渐变蓝">
+              <div class="ai-row">
+                <span class="small muted">引擎</span>
+                <select id="aiEngine" class="sel ai-engine"><option value="flux">Flux（内置）</option><option value="agnes">agnes</option></select>
+                <button type="button" class="btn btn-ghost" id="aiGenBtn">生成背景</button>
+              </div>
+              <div id="aiGenStatus" class="small muted"></div>
+            </div>
+
+            <div class="ai-field">
+              <span class="ai-label">导出尺寸</span>
+              <select id="aiSize" class="sel">
+                <option value="0">原始尺寸</option>
+                <option value="295x413">1寸 295×413</option>
+                <option value="413x531">小2寸 413×531</option>
+                <option value="413x579">2寸 413×579</option>
+              </select>
+            </div>
+
+            <button type="button" class="btn btn-accent" id="aiUploadBtn" disabled>合成并上传</button>
+            <p class="small muted">本地合成后加密直传到对象存储。</p>
+          </div>
+        </div>
+
+        <!-- 右：预览 -->
+        <div class="ai-preview">
+          <div class="ai-prev-head">
+            <span class="ai-prev-label">预览</span>
+            <span id="aiPrevInfo" class="small muted"></span>
+          </div>
+          <div id="aiPreview" class="ai-prev checker">
+            <span class="ai-prev-empty small muted">抠图后在此预览</span>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 

@@ -7,7 +7,7 @@ const el = {
   fileInput: $('#fileInput'),
   results: $('#results'),
   gallery: $('#gallery'),
-  views: { upload: $('#view-upload'), gallery: $('#view-gallery') },
+  views: { upload: $('#view-upload'), gallery: $('#view-gallery'), ai: $('#view-ai') },
   tabs: Array.from(document.querySelectorAll('.nav-tab')),
   tokenBtn: $('#tokenBtn'),
   tokenDot: $('#tokenDot'),
@@ -319,11 +319,196 @@ async function loadGallery() {
   }
 }
 
+/* ---------------- AI 抠图换背景 ---------------- */
+const TF_CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3';
+const ai = {
+  remover: null, cutoutCanvas: null, sceneImg: null,
+  bgType: 'transparent', color: '#438edb', lastName: 'image',
+};
+
+// 懒加载 transformers.js + RMBG-1.4（首次下载，浏览器缓存）
+async function getRemover(onProgress) {
+  if (ai.remover) return ai.remover;
+  const tr = await import(TF_CDN);
+  tr.env.allowLocalModels = false;
+  // 优先 WebGPU（快），失败回退默认 WASM
+  try {
+    ai.remover = await tr.pipeline('background-removal', 'onnx-community/RMBG-1.4', { device: 'webgpu', progress_callback: onProgress });
+  } catch {
+    ai.remover = await tr.pipeline('background-removal', 'onnx-community/RMBG-1.4', { progress_callback: onProgress });
+  }
+  return ai.remover;
+}
+
+function aiProgressCb(d) {
+  if (d.status === 'progress' && d.file) {
+    const pct = d.total ? Math.round((d.loaded / d.total) * 100) : 0;
+    setAiProgress(pct, `下载模型 ${String(d.file).split('/').pop()} · ${pct}%`);
+  } else if (d.status === 'ready') {
+    setAiProgress(100, '模型就绪');
+  }
+}
+const setAiProgress = (p, t) => { $('#aiBarFill').style.width = Math.max(0, Math.min(100, p)) + '%'; if (t) $('#aiProgressText').textContent = t; };
+const showAiProgress = (p, t) => { $('#aiProgress').hidden = false; setAiProgress(p, t); };
+const hideAiProgress = () => { $('#aiProgress').hidden = true; };
+
+function loadImageSrc(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = src;
+  });
+}
+
+async function aiSelect(file) {
+  if (!file || !file.type.startsWith('image/')) { toast('请选择图片文件', true); return; }
+  ai.lastName = file.name;
+  showAiProgress(5, '加载模型…（首次约几十MB，之后缓存）');
+  let remover;
+  try {
+    remover = await getRemover(aiProgressCb);
+  } catch (e) {
+    hideAiProgress();
+    toast('模型加载失败：' + (e?.message || e) + '（CDN 可能被墙，可换网络或自托管模型）', true);
+    return;
+  }
+  setAiProgress(100, '抠图中…');
+  try {
+    const url = URL.createObjectURL(file);
+    let out;
+    try { out = await remover(url); } finally { URL.revokeObjectURL(url); }
+    const raw = Array.isArray(out) ? out[0] : out;
+    ai.cutoutCanvas = raw && typeof raw.toCanvas === 'function' ? raw.toCanvas() : rawToCanvas(raw);
+    hideAiProgress();
+    $('#aiOpts').hidden = false;
+    renderAiPreview();
+    toast('抠图完成');
+  } catch (e) {
+    hideAiProgress();
+    toast('抠图失败：' + (e?.message || e), true);
+  }
+}
+
+function rawToCanvas(raw) {
+  if (!raw || !raw.data || !raw.width || !raw.height) throw new Error('抠图输出无法识别');
+  const c = document.createElement('canvas');
+  c.width = raw.width; c.height = raw.height;
+  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(raw.data), raw.width, raw.height), 0, 0);
+  return c;
+}
+
+// 按当前选项合成（透明/纯色/AI场景 + 尺寸）
+function composeCurrent() {
+  if (!ai.cutoutCanvas) return null;
+  const sizeVal = $('#aiSize').value;
+  let w = ai.cutoutCanvas.width, h = ai.cutoutCanvas.height;
+  if (sizeVal && sizeVal !== '0') { const [sw, sh] = sizeVal.split('x').map(Number); w = sw; h = sh; }
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  if (ai.bgType === 'solid') { ctx.fillStyle = ai.color; ctx.fillRect(0, 0, w, h); }
+  else if (ai.bgType === 'scene' && ai.sceneImg) { drawCover(ctx, ai.sceneImg, w, h); }
+  drawContain(ctx, ai.cutoutCanvas, w, h);
+  return c;
+}
+const drawContain = (ctx, src, w, h) => { const r = Math.min(w / src.width, h / src.height); const dw = src.width * r, dh = src.height * r; ctx.drawImage(src, (w - dw) / 2, (h - dh) / 2, dw, dh); };
+const drawCover = (ctx, src, w, h) => { const r = Math.max(w / src.width, h / src.height); const dw = src.width * r, dh = src.height * r; ctx.drawImage(src, (w - dw) / 2, (h - dh) / 2, dw, dh); };
+
+function renderAiPreview() {
+  const c = composeCurrent();
+  if (!c) return;
+  const prev = $('#aiPreview');
+  prev.innerHTML = '';
+  prev.appendChild(c);
+  $('#aiPrevInfo').textContent = `${c.width}×${c.height}`;
+  $('#aiUploadBtn').disabled = false;
+}
+
+async function genBackground() {
+  const prompt = $('#aiPrompt').value.trim();
+  if (!prompt) { toast('请输入背景描述', true); return; }
+  const engine = $('#aiEngine').value;
+  const btn = $('#aiGenBtn'); btn.disabled = true;
+  $('#aiGenStatus').textContent = `生成中（${engine}）…可能需十几秒`;
+  try {
+    const res = await fetch('/api/gen-bg', {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ prompt, engine }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `失败 ${res.status}`); }
+    const { image } = await res.json();
+    ai.sceneImg = await loadImageSrc(image);
+    $('#aiGenStatus').textContent = '背景已生成';
+    renderAiPreview();
+    toast('背景生成成功');
+  } catch (e) {
+    $('#aiGenStatus').textContent = '';
+    toast('生成失败：' + (e?.message || e), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function aiUpload() {
+  if (!ensureToken()) return;
+  const c = composeCurrent();
+  if (!c) return;
+  const btn = $('#aiUploadBtn'); btn.disabled = true;
+  try {
+    const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('导出失败'))), 'image/png'));
+    const base = ai.lastName.replace(/\.[^.]+$/, '') || 'image';
+    const file = new File([blob], `${base}-${ai.bgType}.png`, { type: 'image/png' });
+    switchView('upload');
+    addResultCard(await uploadFile(file), null);
+    toast('上传成功');
+  } catch (e) {
+    toast('上传失败：' + (e?.message || e), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function bindAi() {
+  const drop = $('#aiDrop'), file = $('#aiFile');
+  drop.addEventListener('click', () => file.click());
+  drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+  file.addEventListener('change', () => { if (file.files[0]) aiSelect(file.files[0]); file.value = ''; });
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('is-drag'); }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('is-drag'); }));
+  drop.addEventListener('drop', (e) => { if (e.dataTransfer?.files?.[0]) aiSelect(e.dataTransfer.files[0]); });
+
+  $('#bgType').addEventListener('click', (e) => {
+    const b = e.target.closest('.seg-btn'); if (!b) return;
+    $('#bgType').querySelectorAll('.seg-btn').forEach((x) => x.classList.toggle('is-active', x === b));
+    ai.bgType = b.dataset.v;
+    document.querySelectorAll('#aiOpts [data-show]').forEach((f) => (f.hidden = f.dataset.show !== ai.bgType));
+    renderAiPreview();
+  });
+  $('#aiColors').addEventListener('click', (e) => {
+    const b = e.target.closest('.swatch[data-c]'); if (!b) return;
+    ai.color = b.dataset.c;
+    $('#aiColors').querySelectorAll('.swatch').forEach((x) => x.classList.toggle('is-active', x === b));
+    $('#aiColor').value = ai.color;
+    renderAiPreview();
+  });
+  $('#aiColor').addEventListener('input', (e) => {
+    ai.color = e.target.value;
+    $('#aiColors').querySelectorAll('.swatch').forEach((x) => x.classList.remove('is-active'));
+    renderAiPreview();
+  });
+  $('#aiGenBtn').addEventListener('click', genBackground);
+  $('#aiSize').addEventListener('change', renderAiPreview);
+  $('#aiUploadBtn').addEventListener('click', aiUpload);
+}
+
 /* ---------------- 初始化 ---------------- */
 function init() {
   renderToken();
   bindDropzone();
   bindPaste();
+  bindAi();
   el.tabs.forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
   el.tokenBtn.addEventListener('click', openTokenDialog);
   el.refreshBtn.addEventListener('click', loadGallery);
