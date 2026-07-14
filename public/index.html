@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EdgeOne 图床</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🖼️ EdgeOne 图床</div>
+    <div class="actions">
+      <span id="token-state" class="badge badge-warn" title="点击设置上传 Token">未设置 Token</span>
+      <button id="btn-token" class="btn btn-ghost">设置 Token</button>
+      <button id="btn-gallery" class="btn btn-ghost">图库</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="upload-section">
+      <div id="dropzone" class="dropzone">
+        <div class="dz-inner">
+          <div class="dz-icon">⬆️</div>
+          <p class="dz-title">拖拽图片到此处上传</p>
+          <p class="dz-sub">或点击选择文件 · 支持多选 · 直传 Bitiful</p>
+          <input id="file-input" type="file" accept="image/*" multiple hidden />
+        </div>
+      </div>
+
+      <div id="results" class="results"></div>
+    </section>
+
+    <section id="gallery-section" hidden>
+      <div class="section-head">
+        <h2>图库</h2>
+        <button id="btn-refresh" class="btn btn-ghost">刷新</button>
+      </div>
+      <div id="gallery" class="gallery"></div>
+    </section>
+  </main>
+
+  <!-- 单张结果的模板 -->
+  <template id="tpl-result">
+    <div class="result-card">
+      <div class="rc-preview"><img alt="" /></div>
+      <div class="rc-body">
+        <div class="rc-name"></div>
+        <div class="rc-links">
+          <label>外链直链</label>
+          <div class="copy-row"><input class="link-url" readonly /><button class="btn-copy">复制</button></div>
+          <label>Markdown</label>
+          <div class="copy-row"><input class="link-md" readonly /><button class="btn-copy">复制</button></div>
+          <label>HTML</label>
+          <div class="copy-row"><input class="link-html" readonly /><button class="btn-copy">复制</button></div>
+          <a class="rc-open" target="_blank" rel="noopener">在新标签打开 ↗</a>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- 图库单项模板 -->
+  <template id="tpl-gallery-item">
+    <div class="g-item">
+      <img alt="" loading="lazy" />
+      <div class="g-meta">
+        <span class="g-name"></span>
+        <div class="g-tools">
+          <button class="btn-copy" data-target="url">复制链接</button>
+          <button class="btn-del">删除</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

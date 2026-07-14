@@ -1,0 +1,5 @@
+{
+  "name": "edgeone-imgbed",
+  "outputDirectory": "./public",
+  "installCommand": "npm install"
+}

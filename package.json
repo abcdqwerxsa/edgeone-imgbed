@@ -1,0 +1,15 @@
+{
+  "name": "edgeone-imgbed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EdgeOne Makers Edge Functions + Bitiful S3 图床：预签名直传上传，边缘函数代理下载",
+  "type": "module",
+  "scripts": {
+    "dev": "edgeone makers dev",
+    "deploy": "edgeone makers deploy",
+    "login": "edgeone login"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20"
+  }
+}
