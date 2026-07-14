@@ -1,5 +1,6 @@
 {
   "name": "edgeone-imgbed",
   "outputDirectory": "./public",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "buildCommand": "npm run build"
 }

@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "edgeone makers dev",
     "deploy": "edgeone makers deploy",
-    "login": "edgeone login"
+    "login": "edgeone login",
+    "build": "echo \"no build step required\""
   },
   "dependencies": {
     "aws4fetch": "^1.0.20"
