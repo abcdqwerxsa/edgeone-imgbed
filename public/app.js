@@ -119,25 +119,40 @@ function loadImage(file) {
   });
 }
 
-// 在浏览器本地处理：缩放 →（铺白底，若输出 JPEG）→ 绘制 → 水印 → 导出
-async function processImage(file, s) {
-  if (!/^image\/(png|jpeg|webp|bmp)$/i.test(file.type)) return file; // GIF/SVG 原样上传
-  const img = await loadImage(file);
+// 源图缓存：避免每次调选项都重新解码原图（性能关键）
+const srcCache = new Map();
+function getSrcImg(file) {
+  if (!srcCache.has(file)) srcCache.set(file, loadImage(file).catch((e) => { srcCache.delete(file); throw e; }));
+  return srcCache.get(file);
+}
+
+// 渲染到 canvas（不导出，供预览复用；预览无需 toBlob/再解码，故快且不闪）
+async function renderToCanvas(file, s) {
+  if (!/^image\/(png|jpeg|webp|bmp)$/i.test(file.type)) return null; // GIF/SVG 不支持
+  const img = await getSrcImg(file);
   let w = img.naturalWidth, h = img.naturalHeight;
   if (s.resize.on && w > s.resize.width) {
     const r = s.resize.width / w;
     w = Math.round(w * r); h = Math.round(h * r);
   }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
   const outType = s.format.on ? s.format.type : file.type;
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (outType === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); } // JPEG 无透明通道
+  if (outType === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); }
   ctx.drawImage(img, 0, 0, w, h);
   if (s.watermark.on && s.watermark.text) drawWatermark(ctx, w, h, s.watermark);
+  return c;
+}
+
+// 在浏览器本地处理：renderToCanvas → toBlob → File（仅实际上传时调用一次）
+async function processImage(file, s) {
+  const c = await renderToCanvas(file, s);
+  if (!c) return file; // GIF/SVG 原样上传
+  const outType = s.format.on ? s.format.type : file.type;
   const quality = s.compress.on ? s.compress.quality / 100 : 0.92;
   const blob = await new Promise((res, rej) =>
-    canvas.toBlob((b) => (b ? res(b) : rej(new Error('导出失败'))), outType, quality)
+    c.toBlob((b) => (b ? res(b) : rej(new Error('导出失败'))), outType, quality)
   );
   const ext = outType === 'image/webp' ? 'webp' : outType === 'image/png' ? 'png' : 'jpg';
   const baseName = file.name.replace(/\.[^.]+$/, '');
@@ -269,18 +284,16 @@ async function renderPreview() {
   const file = pending[previewIdx];
   if (!file) return;
   const prev = $('#queuePreview');
-  prev.innerHTML = '<span class="small muted">处理中…</span>';
+  // 首次为空时给个占位；后续保留旧画面直到新画面就绪再原子替换，避免闪烁
+  if (!prev.firstChild) prev.textContent = '加载中…';
   try {
     const s = getSettings();
     const anyProc = s.resize.on || s.compress.on || s.format.on || s.watermark.on;
-    const out = anyProc ? await processImage(file, s) : file;
-    const url = URL.createObjectURL(out);
-    const img = new Image();
-    img.onload = () => { prev.innerHTML = ''; prev.appendChild(img); };
-    img.onerror = () => { prev.innerHTML = '<span class="small muted">预览失败</span>'; };
-    img.src = url;
+    // 直接画 canvas（复用缓存的源图，不 toBlob/不再解码），很快
+    const node = anyProc ? (await renderToCanvas(file, s)) || (await getSrcImg(file)) : await getSrcImg(file);
+    prev.replaceChildren(node);
   } catch {
-    prev.innerHTML = '<span class="small muted">预览失败</span>';
+    /* 失败保留旧画面，不闪烁 */
   }
 }
 
@@ -304,6 +317,7 @@ async function uploadAll() {
     }
   }
   btn.disabled = false;
+  srcCache.clear();
   schedulePreview();
 }
 
@@ -593,7 +607,7 @@ function init() {
   });
 
   // 待上传队列：处理选项变化 → 刷新预览
-  $('#clearQueueBtn').addEventListener('click', () => { pending.length = 0; previewIdx = 0; renderQueue(); schedulePreview(); });
+  $('#clearQueueBtn').addEventListener('click', () => { pending.length = 0; previewIdx = 0; srcCache.clear(); renderQueue(); schedulePreview(); });
   $('#uploadAllBtn').addEventListener('click', uploadAll);
   $('#procPanel').addEventListener('change', schedulePreview);
   $('#procPanel').addEventListener('input', schedulePreview);
