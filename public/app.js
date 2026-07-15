@@ -217,26 +217,94 @@ function addResultCard({ viewUrl, name, size }, origSize = null) {
   el.results.prepend(node);
 }
 
-async function handleFiles(files) {
+// 待上传队列：选/拖入的图先暂存（不立即上传），设好处理后点「处理并上传全部」
+const pending = [];
+let previewIdx = 0;
+let previewTimer = null;
+
+function handleFiles(files) {
   const imgs = [...files].filter((f) => f.type.startsWith('image/'));
   if (!imgs.length) { toast('请选择图片文件', true); return; }
+  for (const f of imgs) pending.push(f);
+  renderQueue();
+  schedulePreview();
+}
+
+function renderQueue() {
+  const wrap = $('#queueWrap');
+  wrap.hidden = pending.length === 0;
+  if (pending.length === 0) { $('#queuePrevWrap').hidden = true; return; }
+  $('#queueCount').textContent = pending.length;
+  if (previewIdx >= pending.length) previewIdx = 0;
+  const q = $('#queue');
+  q.innerHTML = '';
+  pending.forEach((f, i) => {
+    const node = $('#tpl-queue-item').content.firstElementChild.cloneNode(true);
+    const img = node.querySelector('img');
+    const url = URL.createObjectURL(f);
+    img.src = url;
+    img.onload = () => URL.revokeObjectURL(url);
+    node.querySelector('.q-name').textContent = f.name;
+    if (i === previewIdx) node.classList.add('is-active');
+    node.querySelector('.q-remove').addEventListener('click', (e) => {
+      e.stopPropagation();
+      pending.splice(i, 1);
+      if (previewIdx >= pending.length) previewIdx = Math.max(0, pending.length - 1);
+      renderQueue();
+      schedulePreview();
+    });
+    node.addEventListener('click', () => { previewIdx = i; renderQueue(); schedulePreview(); });
+    q.appendChild(node);
+  });
+}
+
+function schedulePreview() {
+  if (pending.length === 0) { $('#queuePrevWrap').hidden = true; return; }
+  $('#queuePrevWrap').hidden = false;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(renderPreview, 250);
+}
+
+async function renderPreview() {
+  const file = pending[previewIdx];
+  if (!file) return;
+  const prev = $('#queuePreview');
+  prev.innerHTML = '<span class="small muted">处理中…</span>';
+  try {
+    const s = getSettings();
+    const anyProc = s.resize.on || s.compress.on || s.format.on || s.watermark.on;
+    const out = anyProc ? await processImage(file, s) : file;
+    const url = URL.createObjectURL(out);
+    const img = new Image();
+    img.onload = () => { prev.innerHTML = ''; prev.appendChild(img); };
+    img.onerror = () => { prev.innerHTML = '<span class="small muted">预览失败</span>'; };
+    img.src = url;
+  } catch {
+    prev.innerHTML = '<span class="small muted">预览失败</span>';
+  }
+}
+
+async function uploadAll() {
+  if (!pending.length) return;
   if (!ensureToken()) return;
   const s = getSettings();
   const anyProc = s.resize.on || s.compress.on || s.format.on || s.watermark.on;
-  for (const file of imgs) {
+  const btn = $('#uploadAllBtn');
+  btn.disabled = true;
+  const items = pending.splice(0, pending.length);
+  renderQueue();
+  for (const file of items) {
     try {
       let out = file, origSize = null;
-      if (anyProc) {
-        origSize = file.size;
-        out = await processImage(file, s);
-        if (out === file) origSize = null; // 该格式不支持处理（GIF/SVG），不显示对比
-      }
+      if (anyProc) { origSize = file.size; out = await processImage(file, s); if (out === file) origSize = null; }
       addResultCard(await uploadFile(out), origSize);
       toast('上传成功');
     } catch (e) {
       toast(e.message, true);
     }
   }
+  btn.disabled = false;
+  schedulePreview();
 }
 
 /* ---------------- 拖拽 / 选择 / 粘贴 ---------------- */
@@ -523,6 +591,12 @@ function init() {
     rng.addEventListener('input', sync);
     sync();
   });
+
+  // 待上传队列：处理选项变化 → 刷新预览
+  $('#clearQueueBtn').addEventListener('click', () => { pending.length = 0; previewIdx = 0; renderQueue(); schedulePreview(); });
+  $('#uploadAllBtn').addEventListener('click', uploadAll);
+  $('#procPanel').addEventListener('change', schedulePreview);
+  $('#procPanel').addEventListener('input', schedulePreview);
 
   // Token 弹窗：点遮罩关闭，保存写入
   el.tokenDialog.addEventListener('click', (e) => {

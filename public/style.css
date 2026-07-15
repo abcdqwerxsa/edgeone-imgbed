@@ -521,6 +521,25 @@ main.wrap { padding-top: 40px; padding-bottom: 80px; }
   background-position: 0 0, 0 9px, 9px -9px, -9px 0;
 }
 
+/* ---------- 待上传队列 ---------- */
+.btn-sm { padding: 6px 12px; min-height: 32px; font-size: 12.5px; }
+.queue-wrap { margin-top: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px; box-shadow: var(--shadow-1); }
+.queue-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.queue-title { font-weight: 600; font-size: 14px; }
+.queue-title b { color: var(--accent); }
+.queue { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
+.q-item { position: relative; aspect-ratio: 1 / 1; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; transition: border-color .15s var(--ease), box-shadow .15s var(--ease); }
+.q-item:hover { border-color: var(--line-2); box-shadow: var(--shadow-1); }
+.q-item.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.q-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.q-remove { position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: rgba(24,24,27,0.62); color: #fff; cursor: pointer; font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; }
+.q-remove:hover { background: var(--danger); }
+.q-name { position: absolute; bottom: 0; left: 0; right: 0; font-size: 10px; color: #fff; background: linear-gradient(0deg, rgba(0,0,0,0.62), transparent); padding: 10px 4px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-prev-wrap { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.queue-preview { border: 1px solid var(--line); border-radius: var(--r-sm); min-height: 100px; display: flex; align-items: center; justify-content: center; padding: 10px; }
+.queue-preview img, .queue-preview canvas { max-width: 100%; max-height: 260px; border-radius: 6px; display: block; }
+.queue-actions { margin-top: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 880px) {
   .ai-layout { grid-template-columns: 1fr; }

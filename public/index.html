@@ -41,7 +41,7 @@
       </div>
 
       <!-- 图片处理面板（上传前在浏览器本地用 Canvas 处理）-->
-      <details class="proc" id="procPanel">
+      <details class="proc" id="procPanel" open>
         <summary class="proc-head">
           <svg class="proc-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span class="proc-title">图片处理</span>
@@ -89,6 +89,23 @@
 
         </div>
       </details>
+
+      <!-- 待上传区：选/拖入的图先暂存，设好处理后点「处理并上传全部」 -->
+      <div id="queueWrap" class="queue-wrap" hidden>
+        <div class="queue-head">
+          <span class="queue-title">待上传 <b id="queueCount">0</b> 张</span>
+          <button type="button" id="clearQueueBtn" class="btn btn-ghost btn-sm">清空</button>
+        </div>
+        <div id="queue" class="queue"></div>
+        <div class="queue-prev-wrap" id="queuePrevWrap" hidden>
+          <span class="small muted">处理预览（点击缩略图切换）</span>
+          <div id="queuePreview" class="queue-preview checker"></div>
+        </div>
+        <div class="queue-actions">
+          <button type="button" id="uploadAllBtn" class="btn btn-accent">处理并上传全部</button>
+          <span class="small muted">按上方「图片处理」设置处理后再上传</span>
+        </div>
+      </div>
 
       <div id="results" class="results" aria-live="polite"></div>
     </section>
@@ -187,6 +204,15 @@
       <span class="muted">私有桶 · 边缘代理直链 · Token 鉴权上传</span>
     </div>
   </footer>
+
+  <!-- 待上传队列项模板 -->
+  <template id="tpl-queue-item">
+    <div class="q-item">
+      <img alt="" loading="lazy" />
+      <button type="button" class="q-remove" title="移除" aria-label="移除">×</button>
+      <span class="q-name"></span>
+    </div>
+  </template>
 
   <!-- 上传结果卡片模板 -->
   <template id="tpl-result">

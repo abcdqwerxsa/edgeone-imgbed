@@ -3,11 +3,12 @@ import { jsonResponse } from '../../src/lib/utils.js';
 
 // Workers AI 文生图模型（速度快、文档成熟）
 const FLUX_MODEL = '@cf/black-forest-labs/flux-1-schnell';
+const AGNES_MODEL = 'agnes-image-2.1-flash';
 
 /**
  * POST /api/gen-bg   body: { prompt, engine?, width?, height? }
  *  - engine=flux（默认）: context.env.AI 调 Flux 生背景图
- *  - engine=agnes: 调外部 AGNES_API_URL（通用适配器，需配 AGNES_API_URL，可选 AGNES_API_KEY）
+ *  - engine=agnes: 调 Agnes Image 2.1 Flash（需配 AGNES_API_URL / AGNES_API_KEY）
  * 返回 { image: "data:image/png;base64,..." }
  */
 export async function onRequestPost(context) {
@@ -36,19 +37,33 @@ export async function onRequestPost(context) {
     }
 
     if (engine === 'agnes') {
-      if (!env.AGNES_API_URL) {
-        return jsonResponse({ error: 'agnes 未配置（需设 AGNES_API_URL，可选 AGNES_API_KEY）' }, 400);
+      if (!env.AGNES_API_URL || !env.AGNES_API_KEY) {
+        return jsonResponse({ error: 'agnes 未配置（需设 AGNES_API_URL 和 AGNES_API_KEY）' }, 400);
       }
-      const headers = { 'Content-Type': 'application/json' };
-      if (env.AGNES_API_KEY) headers['Authorization'] = `Bearer ${env.AGNES_API_KEY}`;
       const res = await fetch(env.AGNES_API_URL, {
         method: 'POST',
-        headers,
-        body: JSON.stringify({ prompt, width, height }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.AGNES_API_KEY}` },
+        body: JSON.stringify({
+          model: env.AGNES_MODEL || AGNES_MODEL,
+          prompt,
+          size: `${width}x${height}`,
+          return_base64: true,
+        }),
       });
-      if (!res.ok) return jsonResponse({ error: `agnes 请求失败: ${res.status}` }, 502);
-      const dd = await agnesToDataUrl(res, env);
-      if (!dd) return jsonResponse({ error: 'agnes 返回格式无法识别为图片（需对齐接口）' }, 502);
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        return jsonResponse({ error: `agnes ${res.status}: ${t.slice(0, 200)}` }, 502);
+      }
+      const j = await res.json().catch(() => null);
+      const item = j && j.data && j.data[0];
+      let dd = null;
+      if (item && typeof item.b64_json === 'string' && item.b64_json) {
+        dd = `data:image/png;base64,${item.b64_json}`;
+      } else if (item && typeof item.url === 'string') {
+        const r2 = await fetch(item.url);
+        if (r2.ok) dd = bytesToDataUrl(new Uint8Array(await r2.arrayBuffer()));
+      }
+      if (!dd) return jsonResponse({ error: 'agnes 返回无图片' }, 502);
       return jsonResponse({ image: dd, engine: 'agnes' });
     }
 
@@ -70,10 +85,9 @@ export function onRequestOptions() {
   });
 }
 
-/** 把 Workers AI 的生图结果（Response / ArrayBuffer / Uint8Array / ReadableStream / {image:base64}）统一转 dataURL。 */
+/** Workers AI 生图结果（Response / ArrayBuffer / Uint8Array / ReadableStream / {image:base64}）转 dataURL */
 async function toDataUrl(result) {
   if (!result) return null;
-  // { image: <base64 字符串> }
   if (typeof result.image === 'string') {
     return result.image.startsWith('data:') ? result.image : `data:image/png;base64,${result.image}`;
   }
@@ -86,7 +100,7 @@ async function toBytes(src) {
   if (src instanceof Uint8Array) return src;
   if (src instanceof ReadableStream) return new Uint8Array(await new Response(src).arrayBuffer());
   if (src instanceof Response) return new Uint8Array(await src.arrayBuffer());
-  if (src && typeof src.arrayBuffer === 'function') return new Uint8Array(await src.arrayBuffer()); // Blob 等
+  if (src && typeof src.arrayBuffer === 'function') return new Uint8Array(await src.arrayBuffer());
   return null;
 }
 
@@ -94,34 +108,6 @@ function bytesToDataUrl(bytes) {
   if (!bytes || bytes.length === 0) return null;
   let bin = '';
   const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
+  for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
   return `data:image/png;base64,${btoa(bin)}`;
-}
-
-/** agnes 通用适配器：兼容直接返回图片、{image:base64/url}、{data:[{url}]}、{url} 几种常见形态。 */
-async function agnesToDataUrl(res, env) {
-  const ct = (res.headers.get('content-type') || '').toLowerCase();
-  if (ct.includes('image/')) {
-    return bytesToDataUrl(new Uint8Array(await res.arrayBuffer()));
-  }
-  const j = await res.json().catch(() => null);
-  if (!j) return null;
-  if (typeof j.image === 'string') {
-    if (j.image.startsWith('http')) return await fetchUrlToDataUrl(j.image, env);
-    return j.image.startsWith('data:') ? j.image : `data:image/png;base64,${j.image}`;
-  }
-  const url = j.url || j.data?.[0]?.url || j.output?.[0] || j.result;
-  if (typeof url === 'string' && url.startsWith('http')) return await fetchUrlToDataUrl(url, env);
-  if (j.image && typeof j.image !== 'string') return bytesToDataUrl(await toBytes(j.image));
-  return null;
-}
-
-async function fetchUrlToDataUrl(url, env) {
-  const headers = {};
-  if (env.AGNES_API_KEY) headers['Authorization'] = `Bearer ${env.AGNES_API_KEY}`;
-  const r = await fetch(url, { headers });
-  if (!r.ok) return null;
-  return bytesToDataUrl(new Uint8Array(await r.arrayBuffer()));
 }
